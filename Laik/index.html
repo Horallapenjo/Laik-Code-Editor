@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laik Code Editor</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #toolbar {
+            background-color: #1e1e1e;
+            color: white;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #editor-container {
+            width: 70vw;
+            height: calc(100vh - 50px);
+            float: left;
+        }
+
+        #output-container {
+            width: 30vw;
+            height: calc(100vh - 50px);
+            float: left;
+            padding: 10px;
+            background-color: #f0f0f0;
+            overflow: auto;
+        }
+
+        select, button {
+            padding: 5px 10px;
+            background-color: #252526;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        button:hover, select:hover {
+            background-color: #3c3c3c;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        label[for="file-upload"] {
+            cursor: pointer;
+            background-color: #007acc;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        label[for="file-upload"]:hover {
+            background-color: #005f99;
+        }
+
+        textarea {
+            width: 100%;
+            height: 100%;
+            background-color: #333;
+            color: white;
+            padding: 10px;
+            border: none;
+        }
+    </style>
+
+    <!-- Monaco Editor laden -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor/min/vs/loader.js"></script>
+</head>
+<body>
+
+    <div id="toolbar">
+        <div>
+            <label for="language">Language: </label>
+            <select id="language">
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="python">Python</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="json">JSON</option>
+                <option value="cpp">C++</option>
+                <option value="java">Java</option>
+                <option value="php">PHP</option>
+                <option value="ruby">Ruby</option>
+                <option value="go">Go</option>
+                <option value="shell">Shell</option>
+                <option value="batch">Batch</option>
+                <option value="sql">SQL</option>
+                <option value="plsql">PL/SQL</option>
+            </select>
+        </div>
+        <div>
+            <label for="theme">Theme: </label>
+            <select id="theme">
+                <option value="vs-dark">Dark</option>
+                <option value="vs-light">Light</option>
+            </select>
+        </div>
+        <div>
+            <input type="file" id="file-upload" accept=".js,.ts,.py,.html,.css,.json,.cpp,.java,.php,.rb,.go,.sh,.bat,.sql">
+            <label for="file-upload">Upload File</label>
+            <button id="download">Download File</button>
+            <button id="save-example">Save Example</button>
+            <button id="load-example">Load Example</button>
+            <button id="run-script">Run Script</button>
+        </div>
+    </div>
+
+    <!-- Editor Bereich -->
+    <div id="editor-container"></div>
+
+    <!-- Ausgabefenster -->
+    <div id="output-container">
+        <textarea id="output" readonly></textarea>
+    </div>
+
+    <script>
+        let editor;
+
+        // Monaco Editor konfigurieren und laden
+        require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor/min/vs' }});
+        require(['vs/editor/editor.main'], function() {
+            editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: getExampleCode('javascript'),
+                language: 'javascript',
+                theme: 'vs-dark',
+                automaticLayout: true
+            });
+
+            // Sprachwechsel
+            document.getElementById('language').addEventListener('change', function() {
+                const newLanguage = this.value;
+                const exampleCode = getExampleCode(newLanguage);
+                monaco.editor.setModelLanguage(editor.getModel(), newLanguage);
+                editor.setValue(exampleCode);
+            });
+
+            // Theme-Wechsel
+            document.getElementById('theme').addEventListener('change', function() {
+                const newTheme = this.value;
+                monaco.editor.setTheme(newTheme);
+            });
+
+            // Datei-Upload
+            document.getElementById('file-upload').addEventListener('change', function(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const content = e.target.result;
+                        const language = detectLanguage(file.name);
+                        monaco.editor.setModelLanguage(editor.getModel(), language);
+                        editor.setValue(content);
+                    };
+                    reader.readAsText(file);
+                }
+            });
+
+            // Datei-Download
+            document.getElementById('download').addEventListener('click', function() {
+                const content = editor.getValue();
+                const language = document.getElementById('language').value;
+                const blob = new Blob([content], { type: 'text/plain' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `code.${getFileExtension(language)}`;
+                link.click();
+            });
+
+            // Beispielcode speichern
+            document.getElementById('save-example').addEventListener('click', function() {
+                const content = editor.getValue();
+                const language = document.getElementById('language').value;
+                localStorage.setItem('exampleCode-' + language, content);
+                alert('Example code saved for ' + language);
+            });
+
+            // Beispielcode laden
+            document.getElementById('load-example').addEventListener('click', function() {
+                const language = document.getElementById('language').value;
+                const savedCode = localStorage.getItem('exampleCode-' + language);
+                if (savedCode) {
+                    editor.setValue(savedCode);
+                } else {
+                    alert('No saved example found for ' + language);
+                }
+            });
+
+            // Script ausführen (nur für JavaScript und Python)
+            document.getElementById('run-script').addEventListener('click', function() {
+                const code = editor.getValue();
+                const language = document.getElementById('language').value;
+                const outputArea = document.getElementById('output');
+                outputArea.value = ''; // Ausgabe zurücksetzen
+
+                if (language === 'javascript') {
+                    try {
+                        const result = eval(code);
+                        outputArea.value = result !== undefined ? result : 'Script executed successfully.';
+                    } catch (error) {
+                        outputArea.value = 'Error: ' + error.message;
+                    }
+                } else if (language === 'python') {
+                    // Für Python könnte man Brython oder einen Python-Server nutzen. Hier vereinfachtes Pseudo-Ergebnis.
+                    outputArea.value = 'Python execution is not supported in the browser, but you can run this code on a server or in a Python environment.';
+                } else {
+                    outputArea.value = 'Script execution is only available for JavaScript and Python.';
+                }
+            });
+        });
+
+        // Beispielcode für verschiedene Sprachen
+        function getExampleCode(language) {
+            switch (language) {
+                case 'javascript':
+                    return `// JavaScript Beispiel\nfunction hello() {\n  console.log("Hello, World!");\n}`;
+                case 'typescript':
+                    return `// TypeScript Beispiel\nfunction hello(): void {\n  console.log("Hello, TypeScript!");\n}`;
+                case 'python':
+                    return `# Python Beispiel\ndef hello():\n    print("Hello, Python!")`;
+                case 'html':
+                    return `<!-- HTML Beispiel -->\n<!DOCTYPE html>\n<html>\n<head>\n  <title>Hello, HTML</title>\n</head>\n<body>\n  <h1>Hello, World!</h1>\n</body>\n</html>`;
+                case 'css':
+                    return `/* CSS Beispiel */\nbody {\n  font-family: Arial, sans-serif;\n  background-color: #f0f0f0;\n}`;
+                case 'json':
+                    return `{\n  "message": "Hello, JSON",\n  "status": 200\n}`;
+                case 'cpp':
+                    return `// C++ Beispiel\n#include <iostream>\nint main() {\n  std::cout << "Hello, C++" << std::endl;\n  return 0;\n}`;
+                case 'java':
+                    return `// Java Beispiel\npublic class HelloWorld {\n  public static void main(String[] args) {\n    System.out.println("Hello, Java!");\n  }\n}`;
+                case 'php':
+                    return `<?php\n// PHP Beispiel\nfunction hello() {\n  echo "Hello, PHP!";\n}\n?>`;
+                case 'ruby':
+                    return `# Ruby Beispiel\ndef hello\n  puts "Hello, Ruby!"\nend`;
+                case 'go':
+                    return `// Go Beispiel\npackage main\nimport "fmt"\nfunc main() {\n  fmt.Println("Hello, Go!")\n}`;
+                case 'shell':
+                    return `# Shell Beispiel\necho "Hello, Shell!"`;
+                case 'batch':
+                    return `@echo off\n:: Batch Beispiel\necho Hello, Batch!`;
+                case 'sql':
+                    return `-- SQL Beispiel\nSELECT * FROM users WHERE active = 1;`;
+                case 'plsql':
+                    return `-- PL/SQL Beispiel\nBEGIN\n  DBMS_OUTPUT.PUT_LINE('Hello, PL/SQL!');\nEND;`;
+                default:
+                    return '';
+            }
+        }
+
+        // Dateiendung anhand der Programmiersprache bestimmen
+        function getFileExtension(language) {
+            switch (language) {
+                case 'javascript': return 'js';
+                case 'typescript': return 'ts';
+                case 'python': return 'py';
+                case 'html': return 'html';
+                case 'css': return 'css';
+                case 'json': return 'json';
+                case 'cpp': return 'cpp';
+                case 'java': return 'java';
+                case 'php': return 'php';
+                case 'ruby': return 'rb';
+                case 'go': return 'go';
+                case 'shell': return 'sh';
+                case 'batch': return 'bat';
+                case 'sql': return 'sql';
+                case 'plsql': return 'sql';
+                default: return 'txt';
+            }
+        }
+
+        // Programmiersprache anhand der Dateiendung bestimmen
+        function detectLanguage(filename) {
+            const ext = filename.split('.').pop();
+            switch (ext) {
+                case 'js': return 'javascript';
+                case 'ts': return 'typescript';
+                case 'py': return 'python';
+                case 'html': return 'html';
+                case 'css': return 'css';
+                case 'json': return 'json';
+                case 'cpp': return 'cpp';
+                case 'java': return 'java';
+                case 'php': return 'php';
+                case 'rb': return 'ruby';
+                case 'go': return 'go';
+                case 'sh': return 'shell';
+                case 'bat': return 'batch';
+                case 'sql': return 'sql';
+                default: return 'plaintext';
+            }
+        }
+    </script>
+
+</body>
+</html>
